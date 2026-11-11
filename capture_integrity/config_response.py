@@ -120,27 +120,33 @@ class ConfigResponseLayer:
             return LayerResult(self.name, 0.0, ProbeStatus.UNAVAILABLE, {"error": str(exc)})
 
         measurements: list[ProbeMeasurement] = []
+        skipped: list[str] = []
         start = time.perf_counter()
         try:
             for mode in modes:
                 if (time.perf_counter() - start) * 1000.0 > budget_ms:
                     break
-                measurements.append(backend.reconfigure(mode))
-        except Exception as exc:
-            return LayerResult(
-                self.name, 0.0, ProbeStatus.ERROR,
-                {"error": str(exc), "partial": [m.__dict__ for m in measurements]},
-            )
+                try:
+                    measurements.append(backend.reconfigure(mode))
+                except Exception:
+                    # A single bad mode (e.g. an MSMF abort after a resolution
+                    # switch) must not discard the probes that already succeeded.
+                    skipped.append(f"{mode.width}x{mode.height}@{mode.fps:g}")
         finally:
             if owns_backend:
                 backend.close()
 
         if not measurements:
-            return LayerResult(self.name, 0.0, ProbeStatus.UNAVAILABLE, {"reason": "no probes completed"})
+            return LayerResult(
+                self.name, 0.0, ProbeStatus.UNAVAILABLE,
+                {"reason": "no probes completed", "skipped_modes": skipped},
+            )
 
         features = extract_features(measurements)
         suspicion = score_features(features, profile)
-        return LayerResult(
-            self.name, suspicion, ProbeStatus.OK,
-            {"features": features, "measurements": [m.__dict__ for m in measurements]},
-        )
+        evidence: dict[str, Any] = {
+            "features": features, "measurements": [m.__dict__ for m in measurements],
+        }
+        if skipped:
+            evidence["skipped_modes"] = skipped
+        return LayerResult(self.name, suspicion, ProbeStatus.OK, evidence)

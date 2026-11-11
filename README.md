@@ -97,7 +97,9 @@ result.evidence   # raw per-layer measurements + reason/error, fully auditable
 `status == "unavailable"` (unknown ⇒ uncertain, never silently trusted). If only
 some layers are available, their weights are renormalized and `status == "partial"`.
 Probes run in the pre-session idle window and are cached per device fingerprint.
-**L1/L2 read device metadata only — no frame content is read or stored.**
+**L1 reads device metadata only. L2 reconfigures the device and briefly reads one
+frame per mode purely to time first-frame latency, then discards it — no frame
+content is stored or transmitted.**
 
 ## Three-layer signal
 

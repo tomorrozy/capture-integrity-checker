@@ -5,7 +5,7 @@ from capture_integrity.config_response import (
     extract_features,
     score_features,
 )
-from capture_integrity.types import ProbeStatus
+from capture_integrity.types import Mode, ProbeMeasurement, ProbeStatus
 
 
 def test_virtual_features_score_high(virtual_measurements):
@@ -39,6 +39,43 @@ def test_layer_with_mock_backend(virtual_measurements, make_mock_backend):
 
 
 def test_layer_unavailable_when_backend_fails():
-    # No opencv-python installed here => OpenCVBackend import fails => unavailable.
+    # Unprobeable device: backend either cannot import opencv or cannot open it.
     result = ConfigResponseLayer().run("nonexistent-device-999")
     assert result.status == ProbeStatus.UNAVAILABLE
+
+
+def test_one_failing_mode_does_not_abort_probe():
+    class FlakyBackend:
+        closed = False
+
+        def reconfigure(self, mode):
+            if mode.width == 1280:
+                raise RuntimeError("simulated backend abort")
+            return ProbeMeasurement(mode, mode, 0.5, True, 5.0)
+
+        def close(self):
+            self.closed = True
+
+    modes = (Mode(640, 480, 30), Mode(1280, 720, 30), Mode(1920, 1080, 30))
+    backend = FlakyBackend()
+    result = ConfigResponseLayer().run("dev", backend=backend, modes=modes)
+
+    assert result.status == ProbeStatus.OK
+    assert len(result.evidence["measurements"]) == 2
+    assert result.evidence["skipped_modes"] == ["1280x720@30"]
+    assert backend.closed is False  # injected backend stays owned by the caller
+
+
+def test_all_modes_failing_is_unavailable():
+    class DeadBackend:
+        def reconfigure(self, mode):
+            raise RuntimeError("boom")
+
+        def close(self):
+            pass
+
+    modes = (Mode(640, 480, 30), Mode(1280, 720, 30))
+    result = ConfigResponseLayer().run("dev", backend=DeadBackend(), modes=modes)
+
+    assert result.status == ProbeStatus.UNAVAILABLE
+    assert result.evidence["skipped_modes"] == ["640x480@30", "1280x720@30"]
