@@ -47,3 +47,18 @@ class MockBackend:
 @pytest.fixture
 def make_mock_backend():
     return MockBackend
+
+
+@pytest.fixture
+def harness_data_dir(tmp_path):
+    """A small synthetic collect.py-style CSV dataset for harness tests (tmp_path only)."""
+    import json
+
+    from capture_integrity.config_response import DEFAULT_PROBE_MODES
+    from experiments import collect
+
+    dev_rows, meas_rows = collect.collect_synthetic(3, DEFAULT_PROBE_MODES, 1)
+    collect._write_csv(tmp_path / "devices.csv", collect.DEV_FIELDS, dev_rows)
+    collect._write_csv(tmp_path / "measurements.csv", collect.MEAS_FIELDS, meas_rows)
+    (tmp_path / "meta.json").write_text(json.dumps({"mode": "synthetic", "trials": 3}), encoding="utf-8")
+    return tmp_path

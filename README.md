@@ -11,10 +11,11 @@ configuration-response metadata, not label matching alone.
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)
 <!-- TODO: add PyPI badge once published -->
 
-> **Status: v0.1.0 in development.** The L1/L2 module is implemented as a runnable
-> skeleton with a tested, zero-dependency core — 18 hardware-free tests, CI green
-> on ubuntu/windows × Python 3.10–3.13. Real-device calibration and the validation
-> harness are still pending. See [Roadmap](#roadmap).
+> **Status: v0.1.0 in development.** The L1/L2 module and the validation harness
+> (collect / calibrate / ablation) are implemented with a tested, zero-dependency
+> core — 32 hardware-free tests, CI green on ubuntu/windows × Python 3.10–3.13.
+> Real-device data collection is pending; see the
+> [collection runbook](docs/collecting.md) and [Roadmap](#roadmap).
 
 ---
 
@@ -92,8 +93,9 @@ spoofed-label adversarial variants. Reports detection rate / FPR for L1-only,
 L2-only, L1+L2, and BPCER @ APCER=1e-1 with each layer's marginal contribution.
 
 > Small-sample, non-lab-grade (not ISO/IEC 30107-3). Numbers are scoped to the
-> tested devices; raw CSV + scripts are published for reproduction. See
-> `docs/validation.md` (coming with v0.1.0).
+> tested devices; raw CSV + scripts are published for reproduction. The real
+> `docs/validation.md` is generated from your own cameras — follow the
+> [real-device collection runbook](docs/collecting.md).
 
 ## Honest boundaries
 
@@ -105,8 +107,9 @@ L2-only, L1+L2, and BPCER @ APCER=1e-1 with each layer's marginal contribution.
 
 ## Roadmap
 
-- [ ] L1 descriptor + L2 config-response probes + `calibrate.py`
-- [ ] Device matrix + ablation report (`docs/validation.md`)
+- [x] L1 descriptor + L2 config-response probes + `calibrate.py`
+- [x] Validation harness: collect / calibrate / ablation (`experiments/`)
+- [ ] Real device matrix + ablation report (`docs/validation.md`) — needs hardware ([runbook](docs/collecting.md))
 - [ ] Demo GIF + 2-minute quickstart verified end-to-end
 - [ ] v0.1.0 release + upstream PR (module-only, no core changes)
 - [ ] Optional L3 forensics; macOS support (later)

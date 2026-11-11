@@ -2,11 +2,16 @@
 
 Reproducible collection + ablation analysis for CaptureIntegrityChecker.
 
+> Full step-by-step (Linux / Windows setup, device matrix, the adversarial sample,
+> what to publish): see the [real-device collection runbook](../docs/collecting.md).
+
 ## Files
 
 - `metrics.py` — pure ablation metrics (unit-tested in `tests/test_metrics.py`)
 - `collect.py` — probe devices, write raw CSV (real or synthetic)
+- `calibrate.py` — physical-camera CSV → `CalibrationProfile` JSON
 - `run_validation.py` — recompute the ablation from CSV → markdown report
+- `_data.py` — shared CSV parsing (pure)
 - `devices.example.json` — device manifest template
 
 ## Protocol
@@ -20,11 +25,15 @@ Reproducible collection + ablation analysis for CaptureIntegrityChecker.
    pip install -e ".[opencv]"
    python experiments/collect.py --devices experiments/devices.json --trials 30 --out data
    ```
-3. **Analyze** (no hardware):
+3. **Calibrate** (physical cameras only, no hardware):
    ```bash
-   python experiments/run_validation.py --data data --out docs/validation.md
+   python experiments/calibrate.py --data data --out calibration.json
    ```
-4. Commit `data/` (raw CSV) + `docs/validation.md` for reproducibility.
+4. **Analyze** (no hardware):
+   ```bash
+   python experiments/run_validation.py --data data --profile calibration.json --out docs/validation.md
+   ```
+5. Commit `data/` (raw CSV) + `calibration.json` + `docs/validation.md` for reproducibility.
 
 ## Outputs
 

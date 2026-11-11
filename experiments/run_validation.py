@@ -1,9 +1,11 @@
 """Regenerate the ablation report from collected CSV. No hardware needed.
 
   python experiments/run_validation.py --data data --out docs/validation.md
+  python experiments/run_validation.py --data data --profile calibration.json --out docs/validation.md
 
 Reads devices.csv + measurements.csv (+ meta.json), recomputes per-trial L1/L2/fused
-suspicion, and writes a markdown report plus a per-trial scores.csv for audit.
+suspicion, and writes a markdown report plus a per-trial scores.csv for audit. With
+--profile, L2 is scored relative to a physical-camera calibration profile.
 """
 from __future__ import annotations
 
@@ -14,41 +16,29 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
+if not __package__:  # running as a script: make the repo root importable
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from capture_integrity.calibration import load_profile
 from capture_integrity.config_response import extract_features, score_features
-from capture_integrity.types import Mode, ProbeMeasurement
-from metrics import bpcer_at_apcer, detection_rates, fuse_suspicion
+from experiments._data import read_csv, to_measurement
+from experiments.metrics import bpcer_at_apcer, detection_rates, fuse_suspicion
 
 POSITIVE = {"virtual", "adversarial"}
 NEGATIVE = {"physical"}
 
 
-def _read_csv(path: Path):
-    with open(path, newline="", encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-
-
-def _to_measurement(row) -> ProbeMeasurement:
-    eff = None
-    if row["eff_w"]:
-        eff = Mode(int(row["eff_w"]), int(row["eff_h"]), float(row["eff_fps"]))
-    first = float(row["first_frame_ms"]) if row["first_frame_ms"] else None
-    return ProbeMeasurement(
-        Mode(int(row["req_w"]), int(row["req_h"]), float(row["req_fps"])),
-        eff, float(row["apply_ms"]), bool(int(row["accepted"])), first,
-    )
-
-
-def build_scores(data_dir: Path):
-    devices = {r["device_id"]: r for r in _read_csv(data_dir / "devices.csv")}
+def build_scores(data_dir: Path, profile=None):
+    devices = {r["device_id"]: r for r in read_csv(data_dir / "devices.csv")}
     groups = defaultdict(list)
-    for row in _read_csv(data_dir / "measurements.csv"):
-        groups[(row["device_id"], int(row["trial"]))].append(_to_measurement(row))
+    for row in read_csv(data_dir / "measurements.csv"):
+        groups[(row["device_id"], int(row["trial"]))].append(to_measurement(row))
 
     records = []
     for (dev_id, trial), measurements in sorted(groups.items()):
         dev = devices[dev_id]
         l1 = float(dev["l1_suspicion"]) if dev["l1_suspicion"] else None
-        l2 = score_features(extract_features(measurements))
+        l2 = score_features(extract_features(measurements), profile)
         fused = fuse_suspicion(l1, l2) if l1 is not None else l2
         records.append({"device_id": dev_id, "trial": trial, "label": dev["label"],
                         "l1": l1, "l2": l2, "fused": fused})
@@ -67,7 +57,7 @@ def ablation(records, threshold: float, target_apcer: float):
     return out
 
 
-def render_report(records, devices, abl, meta, threshold, target_apcer) -> str:
+def render_report(records, devices, abl, meta, threshold, target_apcer, profile=None) -> str:
     mode = meta.get("mode", "unknown")
     L = []
     L.append("# Validation Report\n")
@@ -116,12 +106,16 @@ def render_report(records, devices, abl, meta, threshold, target_apcer) -> str:
     L.append("")
 
     L.append("## Method\n")
-    L.append("- Decision rule: suspicion >= threshold ⇒ detected as virtual.")
+    L.append("- Decision rule: suspicion >= threshold => detected as virtual.")
     L.append("- APCER = fraction of attack (virtual/adversarial) samples not detected; "
              "BPCER = fraction of physical samples wrongly detected.")
     L.append("- BPCER@APCER: threshold set at the target-APCER quantile of positive scores; "
              "BPCER measured on negatives at that threshold.")
-    L.append("- L2 uses the default rule thresholds (no per-deployment calibration profile).")
+    if profile is None:
+        L.append("- L2 uses the default rule thresholds (no per-deployment calibration profile).")
+    else:
+        L.append(f"- L2 scored relative to a calibration profile (physical sources: "
+                 f"{', '.join(profile.sources)}; apply mean={profile.physical_apply_mean_ms:.2f}ms).")
     L.append("")
     L.append("## Caveats\n")
     L.append("- Small-sample, non-lab-grade (not ISO/IEC 30107-3). Numbers scoped to these devices.")
@@ -145,6 +139,7 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(description="Regenerate ablation report from CSV")
     p.add_argument("--data", default="data")
     p.add_argument("--out", default="docs/validation.md")
+    p.add_argument("--profile", default=None, help="calibration profile JSON for profile-relative L2 scoring")
     p.add_argument("--threshold", type=float, default=0.5)
     p.add_argument("--target-apcer", type=float, default=0.1)
     args = p.parse_args(argv)
@@ -152,10 +147,11 @@ def main(argv=None) -> int:
     data_dir = Path(args.data)
     meta_path = data_dir / "meta.json"
     meta = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {"mode": "unknown"}
+    profile = load_profile(args.profile) if args.profile else None
 
-    records, devices = build_scores(data_dir)
+    records, devices = build_scores(data_dir, profile)
     abl = ablation(records, args.threshold, args.target_apcer)
-    report = render_report(records, devices, abl, meta, args.threshold, args.target_apcer)
+    report = render_report(records, devices, abl, meta, args.threshold, args.target_apcer, profile)
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
