@@ -7,12 +7,14 @@ runs **before** liveness detection and emits a continuous `0.0–1.0` trust sign
 that flags virtual cameras which survive device-name spoofing — using
 configuration-response metadata, not label matching alone.
 
-<!-- TODO: replace with real CI / PyPI badges once published -->
+[![CI](https://github.com/tomorrozy/capture-integrity-checker/actions/workflows/ci.yml/badge.svg)](https://github.com/tomorrozy/capture-integrity-checker/actions/workflows/ci.yml)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)
+<!-- TODO: add PyPI badge once published -->
 
-> **Status: early development (v0.1.0 in progress).** The interface below is the
-> target API; the module and validation harness are being built. See
-> [Roadmap](#roadmap).
+> **Status: v0.1.0 in development.** The L1/L2 module is implemented as a runnable
+> skeleton with a tested, zero-dependency core — 18 hardware-free tests, CI green
+> on ubuntu/windows × Python 3.10–3.13. Real-device calibration and the validation
+> harness are still pending. See [Roadmap](#roadmap).
 
 ---
 
@@ -36,10 +38,12 @@ signal you can fold into an existing trust score.
      check (left) vs. this module still scores it low (right) -->
 _Demo GIF coming with v0.1.0._
 
-## Quickstart (target interface)
+## Quickstart
+
+From source (PyPI release pending):
 
 ```bash
-pip install capture-integrity-checker
+pip install -e ".[dev]"
 python -m capture_integrity.demo --device 0   # prints score + raw evidence
 ```
 
@@ -111,8 +115,8 @@ L2-only, L1+L2, and BPCER @ APCER=1e-1 with each layer's marginal contribution.
 
 PRs welcome. This repo ships a default
 [PR template](.github/PULL_REQUEST_TEMPLATE.md) — keep changes additive and
-include reproducible evidence. See `SECURITY.md` (coming) for private vulnerability
-reporting.
+include reproducible evidence. See [SECURITY.md](SECURITY.md) for private
+vulnerability reporting.
 
 ## Suggested repository topics
 
