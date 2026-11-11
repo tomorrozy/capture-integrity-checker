@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import statistics
+import sys
 import time
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -30,11 +31,17 @@ def extract_features(measurements: list[ProbeMeasurement]) -> dict[str, float]:
     mean_apply = statistics.fmean(apply) if apply else 0.0
     std_apply = statistics.pstdev(apply) if len(apply) > 1 else 0.0
 
+    def _same_res(a: Mode, b: Mode) -> bool:
+        return a.width == b.width and a.height == b.height
+
+    # Odd-mode acceptance is about *resolution*; driver-reported fps has float
+    # noise (e.g. 30.00003 vs 30) that must not count as a rejection.
     odd = [m for m in measurements if not m.requested.is_standard()]
-    odd_exact = [m for m in odd if m.accepted and m.effective == m.requested]
+    odd_exact = [m for m in odd
+                 if m.accepted and m.effective is not None and _same_res(m.effective, m.requested)]
     odd_accept = len(odd_exact) / len(odd) if odd else 0.0
 
-    clamped = [m for m in accepted if m.effective != m.requested]
+    clamped = [m for m in accepted if not _same_res(m.effective, m.requested)]
     n = len(measurements) or 1
     frames = [m.first_frame_ms for m in accepted if m.first_frame_ms is not None]
     return {
@@ -73,9 +80,21 @@ class OpenCVBackend:
 
         self._cv2 = cv2
         index = int(device) if str(device).isdigit() else device
-        self._cap = cv2.VideoCapture(index)
+        self._cap = self._open(index)
         if not self._cap.isOpened():
             raise RuntimeError(f"cannot open capture device {device!r}")
+
+    def _open(self, index: Any):
+        cv2 = self._cv2
+        # On Windows, DirectShow also sees DirectShow-only virtual cameras (e.g.
+        # OBS) and avoids MSMF assertion failures on some builds, so prefer it.
+        if sys.platform == "win32":
+            for api in (cv2.CAP_DSHOW, cv2.CAP_MSMF):
+                cap = cv2.VideoCapture(index, api)
+                if cap.isOpened():
+                    return cap
+                cap.release()
+        return cv2.VideoCapture(index)
 
     def reconfigure(self, mode: Mode) -> ProbeMeasurement:
         cv2 = self._cv2
@@ -90,8 +109,14 @@ class OpenCVBackend:
         eff_fps = self._cap.get(cv2.CAP_PROP_FPS) or mode.fps
 
         t1 = time.perf_counter()
-        ok_frame, _ = self._cap.read()
-        first_frame_ms = (time.perf_counter() - t1) * 1000.0 if ok_frame else None
+        try:
+            ok_frame, _ = self._cap.read()
+            first_frame_ms = (time.perf_counter() - t1) * 1000.0 if ok_frame else None
+        except Exception:
+            # Some exact odd modes (e.g. a virtual cam that truly accepts 1234x567)
+            # fail to decode. The acceptance signal is still valid, so keep it and
+            # treat first-frame timing as unavailable for that mode.
+            first_frame_ms = None
 
         accepted = bool(ok_w and ok_h)
         effective = Mode(eff_w, eff_h, eff_fps) if accepted else None

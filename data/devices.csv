@@ -1,0 +1,3 @@
+device_id,label,platform,l1_suspicion,l1_status,driver,card,notes
+phys-integrated,physical,windows,,unavailable,,,laptop integrated camera (DirectShow index 0)
+virt-obs,virtual,windows,,unavailable,,,OBS Virtual Camera (DirectShow index 1)

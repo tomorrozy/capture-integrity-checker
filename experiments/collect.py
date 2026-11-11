@@ -66,13 +66,20 @@ def collect_real(devices, trials, modes):
             "card": cap.get("card", ""), "notes": dev.get("notes", ""),
         })
         backend = OpenCVBackend(dev["device"])
+        skipped = 0
         try:
             for trial in range(trials):
                 for mode in modes:
-                    meas_rows.append(_meas_row(dev["id"], dev["label"], trial, backend.reconfigure(mode)))
+                    try:
+                        m = backend.reconfigure(mode)
+                    except Exception:  # a flaky mode must not abort the device's collection
+                        skipped += 1
+                        continue
+                    meas_rows.append(_meas_row(dev["id"], dev["label"], trial, m))
         finally:
             backend.close()
-        print(f"collected {dev['id']} ({dev['label']}): {trials} trials, L1={l1.status.value}")
+        print(f"collected {dev['id']} ({dev['label']}): {trials} trials, "
+              f"{skipped} skipped, L1={l1.status.value}")
     return dev_rows, meas_rows
 
 

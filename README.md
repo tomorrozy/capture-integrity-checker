@@ -12,8 +12,9 @@ face liveness. Defense-in-depth, not a hard block.
 
 > **Status: v0.1.0 in development.** The L1/L2 module and the validation harness
 > (collect / calibrate / ablation) are implemented with a tested, zero-dependency
-> core — 32 hardware-free tests, CI green on ubuntu/windows × Python 3.10–3.13.
-> Real-device data collection is pending; see the
+> core — 38 hardware-free tests, CI green on ubuntu/windows × Python 3.10–3.13.
+> A first **real-hardware** run (Windows/DSHOW, limited scope) is in
+> [docs/validation.md](docs/validation.md); the full ≥2/≥2 matrix is pending — see the
 > [collection runbook](docs/collecting.md) and [Roadmap](#roadmap).
 
 ---
@@ -130,23 +131,23 @@ trust score down, and the module is never a hard block.
 
 ## Validation
 
-Ablation across ≥2 physical cameras, ≥2 virtual-camera implementations, and
-spoofed-label adversarial variants. Reports detection rate / FPR for L1-only,
-L2-only, L1+L2, and BPCER @ APCER=1e-1 with each layer's marginal contribution.
+Target protocol: ablation across ≥2 physical cameras, ≥2 virtual-camera
+implementations, and spoofed-label adversarial variants (TPR / FPR, BPCER @
+APCER=1e-1).
 
-> **Placeholder — real-device results pending.** The table is filled in ONLY from
-> data collected on physical hardware via the [runbook](docs/collecting.md). No
-> synthetic numbers are published as results.
+**First real-hardware run (limited scope).** Windows + DirectShow, 1 physical
+(integrated camera) vs 1 virtual (OBS Virtual Camera), **L2 only** (L1 is Linux-only
+in v0.1), 10 trials each. Odd-mode acceptance separates them — the physical driver
+clamps odd requests, OBS accepts them exactly → **mean L2 0.400 (virtual) vs 0.000
+(physical)**. Timing does not help on this backend (DirectShow renegotiation dominates
+`apply_ms`), so the fused score sits at 0.400 — below the default 0.5 threshold — but a
+**calibrated 0.400** threshold gives **APCER 0.000 / BPCER 0.000**. Full report:
+[docs/validation.md](docs/validation.md); raw CSV: [`data/`](data/).
 
-| Config | n pos | n neg | Detection rate (TPR) | FPR | BPCER @ APCER=1e-1 |
-|---|---|---|---|---|---|
-| L1 only | — | — | — | — | — |
-| L2 only | — | — | — | — | — |
-| L1 + L2 | — | — | — | — | — |
-
-> Small-sample, non-lab-grade (not ISO/IEC 30107-3). Numbers are scoped to the
-> tested devices; raw CSV + scripts are published for reproduction. Generate the real
-> `docs/validation.md` from your own cameras with the `experiments/` harness.
+> Small-sample (10 trials/device), non-lab-grade (**not** ISO/IEC 30107-3), and **not**
+> the ≥2/≥2 matrix — that needs a Linux host with ≥2 physical cameras + v4l2loopback
+> ([runbook](docs/collecting.md)). Treat 0.5 as a placeholder decision threshold and
+> calibrate per deployment.
 
 ## Honest boundaries
 
@@ -163,7 +164,8 @@ L2-only, L1+L2, and BPCER @ APCER=1e-1 with each layer's marginal contribution.
 
 - [x] L1 descriptor + L2 config-response probes + `calibrate.py`
 - [x] Validation harness: collect / calibrate / ablation (`experiments/`)
-- [ ] Real device matrix + ablation report (`docs/validation.md`) — needs hardware ([runbook](docs/collecting.md))
+- [x] First real-hardware run (Windows/DSHOW, L2-only, 1 physical + OBS) → [docs/validation.md](docs/validation.md)
+- [ ] Full ≥2 physical / ≥2 virtual matrix + adversarial variant — needs a Linux host ([runbook](docs/collecting.md))
 - [ ] Demo GIF + 2-minute quickstart verified end-to-end
 - [ ] v0.1.0 release + upstream PR (module-only, no core changes)
 - [ ] Optional L3 forensics; macOS support (later)

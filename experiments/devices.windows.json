@@ -1,0 +1,4 @@
+[
+  {"id": "phys-integrated", "label": "physical", "device": 0, "platform": "windows", "notes": "laptop integrated camera (DirectShow index 0)"},
+  {"id": "virt-obs", "label": "virtual", "device": 1, "platform": "windows", "notes": "OBS Virtual Camera (DirectShow index 1)"}
+]

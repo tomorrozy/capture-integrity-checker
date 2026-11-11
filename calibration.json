@@ -1,0 +1,9 @@
+{
+  "physical_apply_mean_ms": 1247.6934214285714,
+  "physical_apply_std_ms": 17.86588232392274,
+  "physical_odd_accept_ratio": 0.0,
+  "sources": [
+    "phys-integrated"
+  ],
+  "version": 1
+}
