@@ -2,10 +2,9 @@
 
 > **改一个设备名称就能绕过现有虚拟摄像头检测，而这个开源模块让这件事不再免费。**
 
-A pluggable capture-path integrity layer for face liveness / biometric systems. It
-runs **before** liveness detection and emits a continuous `0.0–1.0` trust signal
-that flags virtual cameras which survive device-name spoofing — using
-configuration-response metadata, not label matching alone.
+A pluggable capture-path integrity layer that flags virtual cameras which survive
+device-name spoofing — a continuous **`0.0–1.0` trust signal** you run *before*
+face liveness. Defense-in-depth, not a hard block.
 
 [![CI](https://github.com/tomorrozy/capture-integrity-checker/actions/workflows/ci.yml/badge.svg)](https://github.com/tomorrozy/capture-integrity-checker/actions/workflows/ci.yml)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)
@@ -39,52 +38,93 @@ signal you can fold into an existing trust score.
      check (left) vs. this module still scores it low (right) -->
 _Demo GIF coming with v0.1.0._
 
-## Quickstart
+## Install
 
-From source (PyPI release pending):
+Python ≥ 3.10. The core has **zero runtime dependencies**; probing a live camera
+needs OpenCV (optional).
 
 ```bash
-pip install -e ".[dev]"
-python -m capture_integrity.demo --device 0   # prints score + raw evidence
+pip install -e ".[dev]"      # core + test tooling
+pip install -e ".[opencv]"   # + OpenCV, needed to probe a real device session
 ```
+
+From source only for now — a PyPI release is on the [roadmap](#roadmap).
+
+## 2-minute quickstart
+
+```bash
+python -m capture_integrity.demo --device 0   # prints score + status + raw evidence
+# after editing install: capture-integrity-demo --device 0
+```
+
+Example output on a host where neither layer can probe (here: Windows without
+OpenCV). It degrades to a **neutral `0.5`** with `status: "unavailable"` rather than
+falsely reporting "trusted":
+
+```json
+{
+  "score": 0.5,
+  "signals": {},
+  "status": "unavailable",
+  "evidence": {
+    "descriptor": {"status": "unavailable", "reason": "platform 'win32' not supported in v0.1"},
+    "config_response": {"status": "unavailable", "error": "No module named 'cv2'"}
+  }
+}
+```
+
+On Linux with a real camera you get a genuine score; on Windows/macOS the descriptor
+layer stays `unavailable` (see [Three-layer signal](#three-layer-signal)).
+
+## Interface
 
 ```python
 from capture_integrity import CaptureIntegrityChecker
 
 checker = CaptureIntegrityChecker(
-    layers=("descriptor", "config_response"),  # "forensics" optional, off by default
+    layers=("descriptor", "config_response"),  # "forensics" is planned, not scored in v0.1
     probe_budget_ms=1500,
 )
-result = checker.integrity_score(device="/dev/video0")  # Windows: index / DevicePath
-result.score      # 0.87 — higher is more trustworthy
-result.signals    # {"descriptor": 0.9, "config_response": 0.86}
-result.evidence   # raw measurements, auditable
+result = checker.integrity_score(device="/dev/video0")  # Windows/Linux: int index or path
+
+result.score      # 0..1, higher = more trustworthy
+result.signals    # per-layer trust (1 - suspicion), e.g. {"descriptor": 0.9, "config_response": 0.86}
+result.status     # "ok" | "partial" | "unavailable" | "error"
+result.evidence   # raw per-layer measurements + reason/error, fully auditable
 ```
 
+**Failure semantics:** if **no** layer can produce a reading, `score == 0.5` and
+`status == "unavailable"` (unknown ⇒ uncertain, never silently trusted). If only
+some layers are available, their weights are renormalized and `status == "partial"`.
 Probes run in the pre-session idle window and are cached per device fingerprint.
 **L1/L2 read device metadata only — no frame content is read or stored.**
 
-## Three-layer design
+## Three-layer signal
 
-| Layer | Signal | Weight | Default |
+| Layer | Signal | Weight | v0.1 |
 |---|---|---|---|
-| L1 descriptor | `VIDIOC_QUERYCAP.driver` (Linux) / DevicePath + FilterData (Win) | 0.2 | on |
+| L1 descriptor | `VIDIOC_QUERYCAP.driver` / `card` (**Linux only**) | 0.2 | on (Linux) |
 | L2 config-response | reconfig apply-time distribution, silent-truncation boundary, odd-mode acceptance | 0.7 | on |
-| L3 forensics (optional) | frame jitter, buffer timestamps, double-JPEG | 0.1 | off |
+| L3 forensics (planned) | frame jitter, buffer timestamps, double-JPEG | 0.1 | not scored |
 
-`score = 1 − Σ wᵢ·suspicionᵢ`. Rule/statistical baseline by default — **zero
-training dependency**; an ML backend is interface-only. Every score ships with raw
-`evidence` for audit.
+`score = 1 − Σ wᵢ·suspicionᵢ`, renormalized over the layers that returned a
+reading. Rule/statistical baseline by default — **zero training dependency**; an ML
+backend is interface-only. Every score ships with raw `evidence` for audit.
 
-## Minimal integration
+## Integration
+
+Additive and reversible — land the module first, wire it in later. It runs after the
+existing label check and before the Liveness Fallback, contributing a *soft* signal:
 
 ```python
-# after the existing label check, before Liveness Fallback
-integrity = checker.integrity_score(device)
-trust_score = combine(existing_trust, integrity.score, weight=0.3)  # soft signal
+# examples/minimal_integration.py
+def combine(existing_trust: float, integrity_score: float, weight: float = 0.3) -> float:
+    return (1 - weight) * existing_trust + weight * integrity_score
 ```
 
-Additive and reversible: land the module first, wire it in later (3 lines).
+`combine` is a one-line example helper, not a package export — substitute your own
+fusion. `UNAVAILABLE` stays neutral (`0.5`), so an unknown device never drags the
+trust score down, and the module is never a hard block.
 
 ## Validation
 
@@ -92,10 +132,19 @@ Ablation across ≥2 physical cameras, ≥2 virtual-camera implementations, and
 spoofed-label adversarial variants. Reports detection rate / FPR for L1-only,
 L2-only, L1+L2, and BPCER @ APCER=1e-1 with each layer's marginal contribution.
 
+> **Placeholder — real-device results pending.** The table is filled in ONLY from
+> data collected on physical hardware via the [runbook](docs/collecting.md). No
+> synthetic numbers are published as results.
+
+| Config | n pos | n neg | Detection rate (TPR) | FPR | BPCER @ APCER=1e-1 |
+|---|---|---|---|---|---|
+| L1 only | — | — | — | — | — |
+| L2 only | — | — | — | — | — |
+| L1 + L2 | — | — | — | — | — |
+
 > Small-sample, non-lab-grade (not ISO/IEC 30107-3). Numbers are scoped to the
-> tested devices; raw CSV + scripts are published for reproduction. The real
-> `docs/validation.md` is generated from your own cameras — follow the
-> [real-device collection runbook](docs/collecting.md).
+> tested devices; raw CSV + scripts are published for reproduction. Generate the real
+> `docs/validation.md` from your own cameras with the `experiments/` harness.
 
 ## Honest boundaries
 
@@ -103,7 +152,10 @@ L2-only, L1+L2, and BPCER @ APCER=1e-1 with each layer's marginal contribution.
   calibration profile, tunable thresholds, soft signal; FPR is published.
 - **Bypass still possible:** recompiled kernel module, injected artificial delay.
   This is a baseline, not a complete fix.
-- **Out of scope (v0.1):** hardware HDMI-capture injection, macOS (CoreMediaIO).
+- **Not a liveness detector:** it scores the *capture path*, not the face. Keep it
+  in front of liveness — it does not replace it.
+- **Out of scope (v0.1):** Windows/macOS descriptor probing, hardware HDMI-capture
+  injection, macOS CoreMediaIO.
 
 ## Roadmap
 
@@ -129,4 +181,6 @@ vulnerability reporting.
 
 ## License
 
-[Apache-2.0](LICENSE).
+[Apache-2.0](LICENSE) — chosen over MIT for its explicit **patent grant**, which
+matters when the module is folded into commercial biometric stacks. Swap to MIT if
+you prefer maximum permissiveness.
