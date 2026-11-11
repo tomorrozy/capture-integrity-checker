@@ -1,5 +1,7 @@
 # CaptureIntegrityChecker
 
+*English · [简体中文](README.zh-CN.md)*
+
 > **改一个设备名称就能绕过现有虚拟摄像头检测，而这个开源模块让这件事不再免费。**
 
 A pluggable capture-path integrity layer that flags virtual cameras which survive
